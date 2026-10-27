@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>曲線的局部特徵與切線斜率</title>
+  <style>
+    :root {
+      --primary: #2563eb;
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --text: #1e293b;
+      --text-muted: #64748b;
+      --border: #e2e8f0;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+    body { background-color: var(--bg); color: var(--text); padding: 16px; line-height: 1.5; }
+    .container { max-width: 1200px; margin: 0 auto; display: grid; grid-template-columns: 1fr 340px; gap: 20px; }
+    @media (max-width: 860px) { .container { grid-template-columns: 1fr; } }
+    
+    header { grid-column: 1 / -1; margin-bottom: 8px; }
+    h1 { font-size: 1.6rem; color: #0f172a; }
+
+    .card { background: var(--card-bg); border-radius: 12px; border: 1px solid var(--border); box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); padding: 18px; }
+    .canvas-container { position: relative; width: 100%; aspect-ratio: 4 / 3; min-height: 420px; background: #fff; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); user-select: none; }
+    canvas { width: 100%; height: 100%; display: block; cursor: grab; }
+    canvas:active { cursor: grabbing; }
+
+    /* 快捷縮放浮動按鈕 */
+    .zoom-toolbar {
+      position: absolute;
+      right: 12px;
+      bottom: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      z-index: 10;
+    }
+    .zoom-btn {
+      width: 38px;
+      height: 38px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.95);
+      color: #0f172a;
+      font-size: 1.2rem;
+      font-weight: bold;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      transition: background 0.2s;
+    }
+    .zoom-btn:hover { background: #f1f5f9; }
+
+    .zoom-hud {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      background: rgba(15, 23, 42, 0.8);
+      color: #fff;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      pointer-events: none;
+      backdrop-filter: blur(4px);
+      z-index: 10;
+    }
+
+    .controls-panel { display: flex; flex-direction: column; gap: 16px; }
+    .control-group { display: flex; flex-direction: column; gap: 8px; }
+    label { font-weight: 600; font-size: 0.88rem; display: flex; justify-content: space-between; }
+    .value-badge { font-weight: 500; color: var(--primary); background: #eff6ff; padding: 2px 8px; border-radius: 4px; }
+    input[type="range"] { width: 100%; accent-color: var(--primary); cursor: pointer; }
+
+    .btn-reset { background: #f1f5f9; border: 1px solid var(--border); padding: 6px 12px; border-radius: 6px; font-size: 0.82rem; cursor: pointer; color: var(--text); font-weight: 500; align-self: flex-start; }
+    .btn-reset:hover { background: #e2e8f0; }
+
+    .switch-group { display: flex; flex-direction: column; gap: 10px; }
+    .switch-label { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.9rem; font-weight: 500; }
+    .switch-label input { accent-color: var(--primary); width: 16px; height: 16px; }
+
+    .info-card { background: #f1f5f9; border-radius: 8px; padding: 14px; font-size: 0.88rem; }
+    .info-card h4 { margin-bottom: 8px; font-size: 0.95rem; color: #0f172a; }
+    .math-code { font-family: "Courier New", Courier, monospace; font-weight: bold; }
+    .guide-tip { border-left: 4px solid var(--primary); padding-left: 10px; margin-top: 10px; font-size: 0.82rem; color: var(--text-muted); }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <header>
+    <h1>曲線的局部特徵與切線斜率</h1>
+  </header>
+
+  <div class="card">
+    <div class="canvas-container" id="canvasBox">
+      <canvas id="graphCanvas"></canvas>
+      <div class="zoom-hud" id="zoomHud">倍率：1.0x (支援滾輪/拖曳)</div>
+      <div class="zoom-toolbar">
+        <button class="zoom-btn" id="btnZoomIn" title="放大">+</button>
+        <button class="zoom-btn" id="btnZoomOut" title="縮小">−</button>
+      </div>
+    </div>
+    <div class="guide-tip">
+      💡 <b>互動方式：</b><br>
+      • <b>縮放</b>：在圖形區<b>滾動滑鼠滾輪</b>，或點擊右下角 <b>[+] [−]</b> 按鈕。<br>
+      • <b>平移</b>：按住滑鼠左鍵可拖拉畫布平移視野。<br>
+      • <b>微觀直線化</b>：放大焦點 A，觀察三次曲線如何與綠色切線逐漸貼合重疊。<br>
+      • <b>割線逼近</b>：拖曳動點 P 觀察割線斜率收斂至理論切線斜率。
+    </div>
+  </div>
+
+  <div class="controls-panel">
+    <div class="card">
+      <div class="control-group">
+        <label>
+          基準定點 A 位置 (x)
+          <span class="value-badge" id="aPosBadge">x = 1.00</span>
+        </label>
+        <input type="range" id="aRange" min="-1.8" max="1.8" step="0.05" value="1.0">
+        <button class="btn-reset" id="btnDefaultA">重設為預設位置 (x = 1)</button>
+      </div>
+
+      <hr style="margin: 14px 0; border: none; border-top: 1px solid var(--border);">
+
+      <div class="control-group">
+        <label>
+          局部放大倍率
+          <span class="value-badge" id="zoomBadge">1.0x</span>
+        </label>
+        <input type="range" id="zoomRange" min="1" max="150" step="0.5" value="1">
+      </div>
+
+      <hr style="margin: 14px 0; border: none; border-top: 1px solid var(--border);">
+
+      <div class="control-group">
+        <label>
+          動點 P 位置 (x)
+          <span class="value-badge" id="pPosBadge">x = 1.60</span>
+        </label>
+        <input type="range" id="pRange" min="-2.2" max="2.2" step="0.01" value="1.6">
+      </div>
+
+      <hr style="margin: 14px 0; border: none; border-top: 1px solid var(--border);">
+
+      <div class="switch-group">
+        <label class="switch-label">
+          <input type="checkbox" id="showSecant" checked>
+          <span>顯示割線 AP (紅色虛線)</span>
+        </label>
+        <label class="switch-label">
+          <input type="checkbox" id="showTangent" checked>
+          <span>顯示局部一次近似切線 l(x) (綠色)</span>
+        </label>
+      </div>
+    </div>
+
+    <div class="card info-card">
+      <h4>局部幾何特徵</h4>
+      <p>基準定點：<span class="math-code" id="pointALabel">A(1.00, -1.00)</span></p>
+      <p>動態觀察點：<span class="math-code" id="pointPLabel">P(1.60, 0.90)</span></p>
+      <p style="margin-top: 8px;">割線 AP 斜率：<br>
+        <span class="math-code" id="secantSlopeLabel">m = 3.160</span>
+      </p>
+      <p style="margin-top: 8px;">理論切線斜率 f'(a)：<br>
+        <span class="math-code" style="color: #16a34a;" id="tangentSlopeLabel">m = 1.000</span>
+      </p>
+      <p style="margin-top: 8px;">一次近似方程式：<br>
+        <span class="math-code" style="color: #16a34a;" id="tangentLineLabel">l(x) = 1.00x - 2.00</span>
+      </p>
+    </div>
+  </div>
+</div>
+
+<script>
+  const canvas = document.getElementById('graphCanvas');
+  const ctx = canvas.getContext('2d');
+  const canvasBox = document.getElementById('canvasBox');
+  const zoomHud = document.getElementById('zoomHud');
+
+  const aRange = document.getElementById('aRange');
+  const zoomRange = document.getElementById('zoomRange');
+  const pRange = document.getElementById('pRange');
+  const btnDefaultA = document.getElementById('btnDefaultA');
+  const btnZoomIn = document.getElementById('btnZoomIn');
+  const btnZoomOut = document.getElementById('btnZoomOut');
+
+  const aPosBadge = document.getElementById('aPosBadge');
+  const zoomBadge = document.getElementById('zoomBadge');
+  const pPosBadge = document.getElementById('pPosBadge');
+
+  const showSecant = document.getElementById('showSecant');
+  const showTangent = document.getElementById('showTangent');
+
+  const pointALabel = document.getElementById('pointALabel');
+  const pointPLabel = document.getElementById('pointPLabel');
+  const secantSlopeLabel = document.getElementById('secantSlopeLabel');
+  const tangentSlopeLabel = document.getElementById('tangentSlopeLabel');
+  const tangentLineLabel = document.getElementById('tangentLineLabel');
+
+  const f = x => Math.pow(x, 3) - 2 * x;
+  const df = x => 3 * Math.pow(x, 2) - 2;
+
+  let panOffsetX = 0;
+  let panOffsetY = 0;
+  let isDragging = false;
+  let dragStartX = 0;
+  let dragStartY = 0;
+
+  function resizeCanvas() {
+    canvas.width = canvasBox.clientWidth * window.devicePixelRatio;
+    canvas.height = canvasBox.clientHeight * window.devicePixelRatio;
+    ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+    draw();
+  }
+  window.addEventListener('resize', resizeCanvas);
+
+  window.addEventListener('wheel', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    if (
+      e.clientX >= rect.left &&
+      e.clientX <= rect.right &&
+      e.clientY >= rect.top &&
+      e.clientY <= rect.bottom
+    ) {
+      e.preventDefault();
+      applyZoom(e.deltaY < 0 ? 1.15 : 0.85);
+    }
+  }, { passive: false });
+
+  function applyZoom(factor) {
+    let curZoom = parseFloat(zoomRange.value);
+    curZoom = Math.min(150, Math.max(1, curZoom * factor));
+    zoomRange.value = curZoom.toFixed(1);
+    draw();
+  }
+
+  btnZoomIn.addEventListener('click', () => applyZoom(1.3));
+  btnZoomOut.addEventListener('click', () => applyZoom(0.75));
+
+  canvas.addEventListener('mousedown', (e) => {
+    isDragging = true;
+    dragStartX = e.clientX - panOffsetX;
+    dragStartY = e.clientY - panOffsetY;
+  });
+
+  window.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+    panOffsetX = e.clientX - dragStartX;
+    panOffsetY = e.clientY - dragStartY;
+    draw();
+  });
+
+  window.addEventListener('mouseup', () => { isDragging = false; });
+
+  btnDefaultA.addEventListener('click', () => {
+    aRange.value = 1.0;
+    pRange.value = 1.6;
+    zoomRange.value = 1.0;
+    panOffsetX = 0;
+    panOffsetY = 0;
+    draw();
+  });
+
+  function draw() {
+    const width = canvasBox.clientWidth;
+    const height = canvasBox.clientHeight;
+    ctx.clearRect(0, 0, width, height);
+
+    const axVal = parseFloat(aRange.value);
+    const ayVal = f(axVal);
+    const zoom = parseFloat(zoomRange.value);
+    const pxVal = parseFloat(pRange.value);
+    const pyVal = f(pxVal);
+
+    const unitScale = (width / 5) * zoom;
+    const originX = width / 2 - (axVal * unitScale) + panOffsetX;
+    const originY = height / 2 + (ayVal * unitScale) + panOffsetY;
+
+    const toScreenX = x => originX + x * unitScale;
+    const toScreenY = y => originY - y * unitScale;
+    const toMathX = sx => (sx - originX) / unitScale;
+
+    // 1. 網格
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = '#e2e8f0';
+    const gridStep = zoom > 35 ? 0.02 : (zoom > 10 ? 0.1 : (zoom > 4 ? 0.2 : 0.5));
+    const minX = toMathX(0);
+    const maxX = toMathX(width);
+    const startX = Math.floor(minX / gridStep) * gridStep;
+    
+    for (let x = startX; x <= maxX; x += gridStep) {
+      ctx.beginPath();
+      ctx.moveTo(toScreenX(x), 0);
+      ctx.lineTo(toScreenX(x), height);
+      ctx.stroke();
+    }
+
+    // 2. 坐標軸
+    ctx.strokeStyle = '#cbd5e1';
+    ctx.lineWidth = 1.5;
+    const axisY = toScreenY(0);
+    const axisX = toScreenX(0);
+    if (axisY >= 0 && axisY <= height) {
+      ctx.beginPath(); ctx.moveTo(0, axisY); ctx.lineTo(width, axisY); ctx.stroke();
+    }
+    if (axisX >= 0 && axisX <= width) {
+      ctx.beginPath(); ctx.moveTo(axisX, 0); ctx.lineTo(axisX, height); ctx.stroke();
+    }
+
+    // 3. 曲線 f(x)
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = '#2563eb';
+    ctx.beginPath();
+    let isStarted = false;
+    for (let sx = 0; sx <= width; sx += 2) {
+      const mx = toMathX(sx);
+      const my = f(mx);
+      const sy = toScreenY(my);
+      if (!isStarted) { ctx.moveTo(sx, sy); isStarted = true; }
+      else { ctx.lineTo(sx, sy); }
+    }
+    ctx.stroke();
+
+    // 4. 切線與割線
+    const mTangent = df(axVal);
+    const bTangent = ayVal - mTangent * axVal;
+
+    if (showTangent.checked) {
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = '#16a34a';
+      ctx.beginPath();
+      const xL = toMathX(0);
+      const xR = toMathX(width);
+      ctx.moveTo(0, toScreenY(mTangent * xL + bTangent));
+      ctx.lineTo(width, toScreenY(mTangent * xR + bTangent));
+      ctx.stroke();
+    }
+
+    const dx = pxVal - axVal;
+    const dy = pyVal - ayVal;
+    const mSecant = Math.abs(dx) < 1e-4 ? mTangent : dy / dx;
+
+    if (showSecant.checked && Math.abs(dx) >= 0.001) {
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = '#dc2626';
+      ctx.setLineDash([5, 4]);
+      ctx.beginPath();
+      const xL = toMathX(0);
+      const xR = toMathX(width);
+      ctx.moveTo(0, toScreenY(ayVal + mSecant * (xL - axVal)));
+      ctx.lineTo(width, toScreenY(ayVal + mSecant * (xR - axVal)));
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // 5. 標繪定點 A
+    const ptAx = toScreenX(axVal);
+    const ptAy = toScreenY(ayVal);
+    ctx.fillStyle = '#0f172a';
+    ctx.beginPath();
+    ctx.arc(ptAx, ptAy, 6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.font = '600 13px sans-serif';
+    ctx.fillText(`A(${axVal.toFixed(2)}, ${ayVal.toFixed(2)})`, ptAx + 8, ptAy - 8);
+
+    // 6. 標繪動點 P
+    const ptPx = toScreenX(pxVal);
+    const ptPy = toScreenY(pyVal);
+    ctx.fillStyle = '#dc2626';
+    ctx.beginPath();
+    ctx.arc(ptPx, ptPy, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillText(`P(${pxVal.toFixed(2)}, ${pyVal.toFixed(2)})`, ptPx + 8, ptPy + 14);
+
+    // 7. 更新介面數值
+    aPosBadge.innerText = `x = ${axVal.toFixed(2)}`;
+    zoomBadge.innerText = `${zoom.toFixed(1)}x`;
+    pPosBadge.innerText = `x = ${pxVal.toFixed(2)}`;
+    zoomHud.innerText = `倍率：${zoom.toFixed(1)}x (支援滾輪/拖曳)`;
+
+    pointALabel.innerText = `A(${axVal.toFixed(2)}, ${ayVal.toFixed(2)})`;
+    pointPLabel.innerText = `P(${pxVal.toFixed(2)}, ${pyVal.toFixed(2)})`;
+    secantSlopeLabel.innerText = `m = ${mSecant.toFixed(3)}`;
+    tangentSlopeLabel.innerText = `m = ${mTangent.toFixed(3)}`;
+
+    const sign = bTangent >= 0 ? '+' : '-';
+    tangentLineLabel.innerText = `l(x) = ${mTangent.toFixed(2)}x ${sign} ${Math.abs(bTangent).toFixed(2)}`;
+  }
+
+  aRange.addEventListener('input', draw);
+  zoomRange.addEventListener('input', draw);
+  pRange.addEventListener('input', draw);
+  showSecant.addEventListener('change', draw);
+  showTangent.addEventListener('change', draw);
+
+  resizeCanvas();
+</script>
+</body>
+</html>
